@@ -1,18 +1,12 @@
-/*
-  Play against engine ==> feed database
-
-  
-  
-  Create a strategy engine
-*/
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "rdtsc.h"
+
 #define MAX_LEN       50
-#define MAX_ROWS  400000
+#define MAX_ROWS   40000
 
 #define MAX_WORDS 10
 
@@ -23,14 +17,14 @@
 typedef unsigned long long uint64;
 
 //
-typedef struct node_s { int state; char word[MAX_LEN]; int len; struct node_s *next; } node_t;
+typedef struct node_s { int state; int nb_links; char word[MAX_LEN]; int len; struct node_s *next; } node_t;
  
 //
 int score;
-int maxlen = 5, minlen = 5;
 int nb_inserts = 0;
 int nb_fail_gen = 0;
 int nb_collisions = 0;
+int maxlen = 5, minlen = 5;
 
 //
 int nb_words;
@@ -38,7 +32,16 @@ node_t *words[MAX_WORDS];
 
 //
 int randxy(int a, int b)
-{  return a + (rand() % (a - b)); }
+{ return (rand() % (b - a + 1)) + a; }
+
+//
+int fact(int n)
+{
+  if (n == 0 || n == 1)
+    return 1;
+  else
+    return fact(n - 1) * n;
+}
 
 //
 int is_upper(char c)
@@ -97,6 +100,7 @@ int insert_node(node_t *d, char *str)
   if (d[h].state == 0)
     {
       d[h].state = 1;
+      d[h].nb_links = 0;
       strncpy(d[h].word, str, len);
       d[h].len = len;
       d[h].next = NULL;
@@ -106,6 +110,8 @@ int insert_node(node_t *d, char *str)
       node_t *tmp = d[h].next;
       node_t *new_n = malloc(sizeof(node_t));
 
+      d[h].nb_links++;
+      
       new_n->state = 1;
       strncpy(new_n->word, str, len);
       new_n->len = len;
@@ -141,7 +147,7 @@ node_t *load_dico(char *fname)
       while (ret != EOF)
 	{
 	  ret = fscanf(fd, "%s\n", tmp);
-	  
+
 	  to_lower(tmp);
 	  
 	  insert_node(d, tmp);
@@ -178,10 +184,10 @@ node_t *lookup(node_t *d, char *str)
 }
 
 
-//
-void gen_perm(node_t *d, char *str, int b, int e)
+//Recursive version
+void gen_perm1(node_t *d, char *str, int b, int e)
 {
-  int pos, found = 0;
+  int found = 0;
   node_t *tmp = NULL;
   
   if (b == e)
@@ -198,12 +204,119 @@ void gen_perm(node_t *d, char *str, int b, int e)
     }
   else
     {
+      //
       for (int i = b; i < e; i++)
 	{
 	  swap(str + b, str + i);
-	  gen_perm(d, str, b + 1, e);
+	  gen_perm1(d, str, b + 1, e);
 	  swap(str + b, str + i);
 	}
+    }
+}
+
+//Heap's algorithm
+void gen_perm2(node_t *d, char *str, int n)
+{
+  int found = 0;
+  node_t *tmp = NULL;
+
+  if (n == 1)
+    {      
+      //Look up word in dictionary
+      if (tmp = lookup(d, str))
+	{
+	  for (int i = 0; i < nb_words && !found; i++)
+	    found = (words[i] == tmp);
+	  
+	  if (!found && nb_words < MAX_WORDS)
+	    words[nb_words++] = tmp;
+	}
+    }
+  else
+    {
+      for (int i = 0; i < n - 1; i++)
+	{
+	  gen_perm2(d, str, n - 1);
+
+	  if (n & 1) //Odd
+	    swap(str, str + n - 1);
+	  else       //Even
+	    swap(str + i, str + n - 1);
+	  
+	  gen_perm2(d, str, n - 1);
+	}
+    }
+}
+
+//Iterative version of the Heap's permutaion algorithm - much faster
+void gen_perm3(node_t *d, char *str)
+{
+  node_t *tmp = NULL;
+  int n = strlen(str);
+  int c[n], found = 0;
+  
+  for (int i = 0; i < n; i++)
+    c[i] = 0;
+  
+  for (int i = 0; i < n;)
+    {
+      if  (c[i] < i)
+	{
+	  if (i % 2)
+	    swap(&str[c[i]], &str[i]);
+	  else
+	    swap(&str[0], &str[i]);
+	  
+	  //Look up word in dictionary
+	  if (tmp = lookup(d, str))
+	    {
+	      for (int i = 0; i < nb_words && !found; i++)
+		found = (words[i] == tmp);
+	  
+	      if (!found && nb_words < MAX_WORDS)
+		words[nb_words++] = tmp;
+	    }	      
+	  
+	  c[i]++;
+	  i = 0;
+	}
+      else
+	{
+	  c[i] = 0;
+	  i++;
+        }
+    }
+}
+
+//
+void gen_perm_n(node_t *d, char *str, int n)
+{
+  node_t *tmp = NULL;
+  int len = strlen(str);
+  int c[len], found = 0, j = 0;
+  
+  for (int i = 0; i < len; i++)
+    c[i] = 0;
+  
+  for (int i = 0; i < len && !found; )
+    {
+      if  (c[i] < i)
+	{
+	  if (i % 2)
+	    swap(&str[c[i]], &str[i]);
+	  else
+	    swap(&str[0], &str[i]);
+	    
+	  found = (j == n); j++;
+	    
+	  c[i]++;
+	  i = 0;
+	}
+      else
+	{
+	  c[i] = 0;
+	  i++;
+        }
     }
 }
 
@@ -223,18 +336,16 @@ void dump_db(char *str)
 }
 
 //
-int main(int argc, char **argv)
+int v1(node_t *dico)
 {
   char *str = NULL;
-  node_t *dico = load_dico("words.txt");
+  double after, before;
   
   nb_words = 0;
   
   srand(getpid());
   
-  printf("\nControl characters:\n"
-	 "\t! : forfait the game\n"
-	 "\t+ : request a hint (loose two points)\n\n");
+  printf("WARNING: generating a sequence may take a while when going over 9 characters.\n\n");
   
   if (dico)
     {
@@ -256,7 +367,9 @@ int main(int argc, char **argv)
 	  
 	  str[nb_chars] = 0;
 	  
-	  gen_perm(dico, str, 0, nb_chars);
+	  //gen_perm(dico, str, 0, nb_chars);
+	  //gen_perm2(dico, str, strlen(str));	  
+	  gen_perm3(dico, str);
 	  
 	  nb_fail_gen++;
 	}
@@ -299,7 +412,7 @@ int main(int argc, char **argv)
 
 		  hint++;
 		  
-		  score -= 1;
+		  score--;
 		}
 	  
 	  score -= !found;
@@ -319,6 +432,101 @@ int main(int argc, char **argv)
     }
   
   dump_db(str);
+  
+  return 0;
+}
+
+//
+int v2(node_t *dico)
+{
+  srand(getpid());
+
+  int h = randxy(0, MAX_ROWS), found = 0, hint = 0;
+  node_t *tmp = &dico[h];
+  char in[tmp->len], str[tmp->len];
+  
+  int w  = randxy(0, 1);  //Go through linked list (1) or not (0)
+  int hh = randxy(0, tmp->nb_links); 
+
+  while (w && hh && tmp)
+    {
+      tmp = tmp->next;
+      hh--;
+    }
+
+  strcpy(str, tmp->word);
+  
+  gen_perm_n(dico, str, randxy(0, fact(tmp->len)));
+  
+  score = tmp->len;
+
+  printf("Characters: %s\n\n", str);
+
+  do
+    {
+      printf("Word (score: %2d)\t: ", score);
+      scanf("%s", in);
+      
+      to_lower(in);
+      
+      if (strlen(in) == tmp->len)
+	{
+	  found = !strncmp(tmp->word, in, tmp->len);
+	}
+      else
+	if (in[0] == '!')
+	  {
+	    score = 1;
+	  }
+	else
+	  if (in[0] == '+')
+	    {
+	      if (hint < tmp->len)
+		printf(" HINT %2d: ", hint);
+	      
+	      for (int i = 0; i < tmp->len; i++)
+		if (i <= hint)
+		  printf("%c", tmp->word[i]);
+		else
+		  printf("?");
+	      
+	      printf("\n\n");
+	      
+	      hint++;
+	      
+	      score--;
+	    }
+      
+	  score -= !found;
+    }
+  while (!found && score);
+
+  printf("Correct answer: %s\n", tmp->word);
+  
+  if (found && score)
+    printf("\n ### Win (score: %d/%d) ###\n", score, tmp->len);
+  
+  if (score == 0)
+    printf("\n ### Game Over (score: 0/%d) ###\n", tmp->len);
+
+  nb_words = 1;
+  words[0] = tmp;
+  
+  dump_db(str);
+  
+  return 0;
+}
+
+//
+int main(int argc, char **argv)
+{
+  node_t *dico = load_dico("words.txt");
+
+  printf("\nControl characters:\n"
+	 "\t! : forfait the game\n"
+	 "\t+ : request a hint (lose two points)\n\n");
+	 
+  v2(dico);
   
   return 0;
 }
