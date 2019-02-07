@@ -501,7 +501,7 @@ int v2(node_t *dico)
     }
   while (!found && score);
 
-  printf("Correct answer: %s\n", tmp->word);
+  printf("\nCorrect answer: %s\n", tmp->word);
   
   if (found && score)
     printf("\n ### Win (score: %d/%d) ###\n", score, tmp->len);
