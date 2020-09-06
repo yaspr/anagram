@@ -87,3 +87,4 @@ asisetd: sestiad; 0;
 ensshtiseek: kinestheses; 0;
 uafetrlryts: frustrately; 0;
 ciesalfl: icefalls; 0;
+thytapaiv: vitapathy; 0;
